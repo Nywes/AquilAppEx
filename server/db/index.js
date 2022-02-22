@@ -1,16 +1,19 @@
 const sqlite3 = require('sqlite3').verbose();
 
 // open database in memory
-let db = new sqlite3.Database('./api/db/aquilapp.db', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+let db = new sqlite3.Database('./db/aquilapp.db', sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
   if (err) {
     return console.error(err.message);
   }
   console.log('Connected to the in-memory SQlite database.');
+  createUserDB()
+  createMeetingDB()
 });
+
 //create the User Database
 const createUserDB = () => {
     console.log("create user db");
-    db.run('CREATE TABLE IF NOT EXISTS users(email text,date datetime)', (err) => {
+    db.run('CREATE TABLE IF NOT EXISTS users(email text,startdate datetime, enddate datetime)', (err) => {
         if (err) {
             console.log(err);
             throw err;
@@ -20,7 +23,7 @@ const createUserDB = () => {
 //create the Meetings Database
 const createMeetingDB = () => {
     console.log("create meeting db");
-    db.run('CREATE TABLE IF NOT EXISTS meetings(email text,date datetime,id int)', (err) => {
+    db.run('CREATE TABLE IF NOT EXISTS meetings(users text, date datetime)', (err) => {
         if (err) {
             console.log(err);
             throw err;
@@ -28,9 +31,12 @@ const createMeetingDB = () => {
     });
 }
 //fill user unavailability in user database
-const createUser = (email, date) => {
+const createUser = (req, res) => {
     console.log("create User")
-    db.run(`INSERT INTO users(email,date) VALUES(?, ?)`, [email, date], (err) => {
+    console.log(req.body.email)
+    console.log(req.body.startdate)
+    console.log(req.body.enddate)
+    db.run(`INSERT INTO users(email,startdate,enddate) VALUES(?, ?, ?)`, [req.body.email, req.body.startdate, req.body.enddate], (err) => {
         if (err) {
             console.log(err);
             throw err;
@@ -38,10 +44,11 @@ const createUser = (email, date) => {
     });
 }
 
-//assigns users to the meetings they are assigned to
-const assignUserToMeeting = (email, date, id) => {
-    console.log("create User")
-    db.run(`INSERT INTO users(email,date,id) VALUES(?, ?, ?)`, [email, date, id], (err) => {
+const createMeeting = (req, res) => {
+    console.log("create Meeting")
+    console.log(req.body.users)
+    console.log(req.body.date)
+    db.run(`INSERT INTO meetings(users,date) VALUES(?, ?)`, [req.body.users, req.body.date], (err) => {
         if (err) {
             console.log(err);
             throw err;
@@ -49,41 +56,47 @@ const assignUserToMeeting = (email, date, id) => {
     });
 }
 
-//read Users Database
-const readUsers = () => {
-    console.log("Read users");
-    db.each(`SELECT email, date FROM users`, (err, row) => {
+const getUsers = (req, res) => {
+    db.all("SELECT * FROM users", (err, result) => {
         if (err) {
             console.log(err);
             throw err;
+        } else {
+            if (!result || result.length === 0) {
+                return res
+                    .status(404)
+                    .json({ success: false, error: `BaseUser not found` })
+            }
+            return res.status(200).json({ success: true, data: result })
+            /*console.log("show result:")
+            console.log(result);
+            //le crash est ici
+            res.send(result);*/
         }
-        console.log(row.email, row.date);
-    }, () => {
-        console.log('query completed')
-    });
-}
+    })
+};
 
-//read Meetings Database
-const readMeetings = () => {
-    console.log("Read meetings");
-    db.each(`SELECT email, date, id FROM meetings`, (err, row) => {
+const getMeetings = (req, res) => {
+    db.all("SELECT * FROM meetings", (err, result) => {
         if (err) {
             console.log(err);
             throw err;
+        } else {
+            if (!result || result.length === 0) {
+                return res
+                    .status(404)
+                    .json({ success: false, error: `BaseUser not found` })
+            }
+            return res.status(200).json({ success: true, data: result })
         }
-        console.log(row.email, row.date, row.id);
-    }, () => {
-        console.log('query completed')
-    });
+    })
 }
 
 module.exports = {
-    createUserDB,
-    createMeetingDB,
     createUser,
-    assignUserToMeeting,
-    readUsers,
-    readMeetings,
+    createMeeting,
+    getUsers,
+    getMeetings,
 }
 
 /*
