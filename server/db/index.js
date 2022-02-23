@@ -23,7 +23,7 @@ const createUserDB = () => {
 //create the Meetings Database
 const createMeetingDB = () => {
     console.log("create meeting db");
-    db.run('CREATE TABLE IF NOT EXISTS meetings(users text, date datetime)', (err) => {
+    db.run('CREATE TABLE IF NOT EXISTS meetings(users text, date datetime, meetingname text)', (err) => {
         if (err) {
             console.log(err);
             throw err;
@@ -48,7 +48,8 @@ const createMeeting = (req, res) => {
     console.log("create Meeting")
     console.log(req.body.users)
     console.log(req.body.date)
-    db.run(`INSERT INTO meetings(users,date) VALUES(?, ?)`, [req.body.users, req.body.date], (err) => {
+    console.log(req.body.meetingname)
+    db.run(`INSERT INTO meetings(users,date,meetingname) VALUES(?, ?, ?)`, [req.body.users, req.body.date, req.body.meetingname], (err) => {
         if (err) {
             console.log(err);
             throw err;
@@ -57,7 +58,7 @@ const createMeeting = (req, res) => {
 }
 
 const getUsers = (req, res) => {
-    db.all("SELECT * FROM users", (err, result) => {
+    db.all("SELECT email FROM users", (err, result) => {
         if (err) {
             console.log(err);
             throw err;
