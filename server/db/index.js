@@ -23,7 +23,7 @@ const createUserDB = () => {
 //create the Meetings Database
 const createMeetingDB = () => {
     console.log("create meeting db");
-    db.run('CREATE TABLE IF NOT EXISTS meetings(users text, date datetime, meetingname text)', (err) => {
+    db.run('CREATE TABLE IF NOT EXISTS meetings(users text, date text, meetingname text)', (err) => {
         if (err) {
             console.log(err);
             throw err;

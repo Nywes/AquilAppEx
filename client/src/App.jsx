@@ -1,17 +1,16 @@
-import React/*, { Component }*/ from 'react';
+import React, { cloneElement }/*, { Component }*/ from 'react';
 import './App.css';
 //import api from './api';
 import { useState } from 'react';
 import axios from 'axios';
-import { DATETIME } from 'mysql/lib/protocol/constants/types';
 
 function App() {
-  const [email, setEmail] = useState("");
-  const [startdate, setStartDate] = useState();
-  const [enddate, setEndDate] = useState();
+  let [email, setEmail] = useState("");
+  let [startdate, setStartDate] = useState();
+  let [enddate, setEndDate] = useState();
 
   const [usersMeetingList, setUsersMeetingList] = useState([{ user: "" }]);
-  const [meetingdate, setMeetingDate] = useState();
+  let [meetingdate, setMeetingDate] = useState("");
   const [meetingname, setMeetingName] = useState("");
 
   let [usersList, setUsersList] = useState([]);
@@ -29,9 +28,7 @@ function App() {
         email: email,
         startdate: startdate,
         enddate: enddate,
-      }).then(() => {
-        console.log("sucess");
-      });
+      })
     }
   }
 
@@ -40,9 +37,7 @@ function App() {
         email: email,
         startdate: startdate,
         enddate: enddate,
-      }).then(() => {
-        console.log("sucess");
-    });
+      })
   }
 
   const JoinUserMeetingList = () => {
@@ -53,7 +48,9 @@ function App() {
       if (incr === 0) {
         list = list.concat('', usersMeetingList[incr].user);
       } else {
-        list = list.concat(';', usersMeetingList[incr].user);
+        if (usersMeetingList[incr].user !== "") {
+          list = list.concat(';', usersMeetingList[incr].user);
+        }
       }
       incr += 1;
     }
@@ -62,11 +59,12 @@ function App() {
 
   const addMeeting = async () => {
     // TODO if empty cancel le move
-    await axios.post('http://localhost:3001/create_meeting', {
+    axios.post('http://localhost:3001/create_meeting', {
       users: JoinUserMeetingList(),
       date: meetingdate,
       meetingname: meetingname,
     })
+    //window.location.reload(false);
   }
 
   const getUsers = () => {
@@ -92,7 +90,7 @@ function App() {
       setCorrectEmail(false);
       setErrorMessage("Invalid Email");
     }
-    if (startdate > enddate || startdate === undefined || enddate === undefined) {
+    if ((startdate === undefined && enddate !== undefined) || (enddate === undefined && startdate !== undefined) || startdate > enddate) {
       setErrorMessage("Invalid Date");
       correctUserDates = false;
       setCorrectUserDates(false);
@@ -123,12 +121,17 @@ function App() {
   const verifyMeetingUsers = async () => {
     let users = usersMeetingList;
     var findUser = false;
+    let re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
     await axios.get('http://localhost:3001/get_users').then((response) => {
         setUsersList(response.data.data);
         usersList = response.data.data;
     })
     for (var i=0; i < users.length; i++) {
       findUser = false;
+      if (!re.test(users[i].user)) {
+        console.log(`The user ${users[i].user} is invalid`);
+        return false;
+      }
       for (var j=0; j < usersList.length; j++) {
         if (users[i].user === usersList[j].email) {
           findUser = true;
@@ -150,7 +153,6 @@ function App() {
     })
     for (var i=0; i < meetingsList.length; i++) {
       if (name === meetingsList[i].meetingname) {
-        console.log("isEqual");
         return false;
       }
     }
@@ -164,43 +166,70 @@ function App() {
     var date = today.getDate();
     var hours = today.getHours();
     var minutes = today.getMinutes();
-    return (`${year}-${month<10?`0${month}`:`${month}`}-${date}T${hours<10?`0${hours}`:`${hours}`}:${minutes<10?`0${minutes}`:`${minutes}`}`);
+    return (`${year}-${month<10?`0${month}`:`${month}`}-${date}T${hours<10?`0${hours}`:`${hours}`}:${minutes<10?`0${minutes}`:`${minutes}`}`)
   }
 
   const findClosestStart = (closestDate) => {
     var earliestDate = closestDate;
     var incr = -1;
-    for (var i=0; i < usersList.length; i++) {
-      if (usersList[i].startdate < earliestDate && earliestDate === closestDate) {
-        continue;
-      }
-      if (usersList[i].startdate > closestDate && (usersList[i].startdate < earliestDate || earliestDate === closestDate)) {
-        earliestDate = usersList[i].startdate;
-        incr = i;
+    let users = usersMeetingList
+    for (var j=0; j < users.length; j++) {
+      for (var i=0; i < usersList.length; i++) {
+        if (users[j].user === usersList[i].email) {
+          if (usersList[i].startdate < earliestDate) {
+            continue;
+          }
+          if (usersList[i].startdate > closestDate && (usersList[i].startdate <= earliestDate || earliestDate === closestDate)) {
+            earliestDate = usersList[i].enddate;
+            //incr = findClosestStart(earliestDate) ?
+            incr = i;
+          }
+        }
       }
     }
-    //rajouter une valeur de retour si il trouve rien
     return (incr);
   }
 
-  const checkIfStartBetween = (closest) => {
+  const checkIfStartBetween = async (closest) => {
+    if (closest === -1) {
+      //get la next indispo
+      return (closest)
+    }
+    await axios.get('http://localhost:3001/get_users').then((response) => {
+      setUsersList(response.data.data);
+      usersList = response.data.data;
+    })
     let start = usersList[closest].startdate;
     let end = usersList[closest].enddate;
     var dateBetween = null;
     var incr = closest;
+    var users = usersMeetingList;
 
-    for (var i=0; i < usersList.length; i++) {
-      if (usersList[i].startdate > start && usersList[i].startdate < end && (dateBetween < usersList[i].startdate || dateBetween === null) && usersList[i].enddate > end) {
-        incr = i
-        dateBetween = usersList[i].startdate;
+    for (var j=0; j < users.length; j++) {
+      for (var i=0; i < usersList.length; i++) {
+        if (users[j].user === usersList[i].email) {
+          if (usersList[i].startdate > start && usersList[i].startdate < end && (dateBetween < usersList[i].startdate || dateBetween === null) && usersList[i].enddate > end) {
+            incr = i
+            dateBetween = usersList[i].startdate;
+          }
+        }
       }
     }
     return (incr);
   }
 
-  const checkConditions = (closest) => {
-    let opening = usersList[closest].enddate
-    var opDate = new Date(opening);
+  const checkConditions = async (closest) => {
+    await axios.get('http://localhost:3001/get_users').then((response) => {
+      setUsersList(response.data.data);
+      usersList = response.data.data;
+    })
+    var opDate = null;
+    if (closest === -1) {
+      opDate = new Date();
+    } else {
+      let opening = usersList[closest].enddate
+      opDate = new Date(opening);
+    }
     let opTab = {
       year: opDate.getFullYear(),
       month: (opDate.getMonth() + 1),
@@ -235,7 +264,14 @@ function App() {
     }
   }
 
-  const checkIfConflictWithNextMeeting = (date, closest) => {
+  const checkIfConflictWithNextMeeting = async (date, closest) => {
+    if (closest === -1) {
+      return (closest)
+    }
+    await axios.get('http://localhost:3001/get_users').then((response) => {
+      setUsersList(response.data.data);
+      usersList = response.data.data;
+    })
     let nextMeeting = findClosestStart(usersList[closest].enddate)
     //c'est degeu
     if (nextMeeting === -1)
@@ -249,9 +285,7 @@ function App() {
       minute: nextDate.getMinutes(),
     }
 
-    console.log(date)
-    console.log(nextMeetingTab)
-    if (date.year === nextMeetingTab.year && date.month === nextMeetingTab.month && date.date == nextMeetingTab.date) {
+    if (date.year === nextMeetingTab.year && date.month === nextMeetingTab.month && date.date === nextMeetingTab.date) {
       if ((nextMeetingTab.hours - date.hours === 1) && (nextMeetingTab.minute < date.minute)) {
         return (nextMeeting);
       }
@@ -262,49 +296,89 @@ function App() {
   const addNewUsersIndisponibility = (date) => {
     let startDateVar = (`${date.year}-${date.month<10?`0${date.month}`:`${date.month}`}-${date.date}T${date.hours<10?`0${date.hours}`:`${date.hours}`}:${date.minute<10?`0${date.minute}`:`${date.minute}`}`)
     let endDateVar = (`${date.year}-${date.month<10?`0${date.month}`:`${date.month}`}-${date.date}T${(date.hours + 1)<10?`0${(date.hours + 1)}`:`${(date.hours + 1)}`}:${date.minute<10?`0${date.minute}`:`${date.minute}`}`)
-    console.log(startDateVar)
-    console.log(endDateVar)
+
+
     for (var i=0; i < usersMeetingList.length; i++) {
-      setEmail(usersMeetingList[i])
+      email = usersMeetingList[i].user
+      setEmail(usersMeetingList[i].user)
+      startdate = startDateVar
       setStartDate(startDateVar)
+      enddate = endDateVar
       setEndDate(endDateVar)
       addSpecialUser()
     }
   }
 
+  const checkIsIndisponibilityInProgress = async (actualDate) => {
+    await axios.get('http://localhost:3001/get_users').then((response) => {
+      setUsersList(response.data.data);
+      usersList = response.data.data;
+    })
+    var users = usersMeetingList;
+    let longestDate = actualDate;
+    var result = -1;
+
+    for (var j=0; j < users.length; j++) {
+      for (var i=0; i < usersList.length; i++) {
+        if (users[j].user === usersList[i].email) {
+          if (usersList[i].startdate <= longestDate && usersList[i].enddate > longestDate) {
+            longestDate = usersList[i].enddate;
+            result = i;
+          }
+        }
+      }
+    }
+    return (result);
+  }
+
   const findMeetingDate = async () => {
-    //chiant qu'un mec peut avoir plusieurs indispo ?? pas vraiment jpense
-    //penser a quand je rajoute un meeting j'ajoute une indispo pour tout les mecs concernés dans la table user
-    //var -> usersList
     // TODO Problem : je prend usersList la alors que je dois utiliser la userList fournie (mettre au bon format)
     await axios.get('http://localhost:3001/get_users').then((response) => {
       setUsersList(response.data.data);
       usersList = response.data.data;
     })
-    let closest = findClosestStart(giveActalDatetime())
-    console.log(usersList)
-    console.log(usersList[closest])
-    closest = checkIfStartBetween(closest)
-    console.log(usersList)
-    console.log(usersList[closest])
-    console.log("-------")
-    for (var i=0; i < usersList.length; i++) {
-      let date = checkConditions(closest)
-      let stock = checkIfConflictWithNextMeeting(date, closest)
-      if (stock === closest) {
-        console.log("result")
-        console.log(date)
-        addNewUsersIndisponibility(date)
-        return (date)
-      } else {
-        closest = stock
+    let closestStartDateIndex = await checkIsIndisponibilityInProgress(giveActalDatetime())
+    let closest = null;
+    if (closestStartDateIndex === -1) {
+      closest = findClosestStart(giveActalDatetime())
+    } else {
+      closest = findClosestStart(usersList[closestStartDateIndex].enddate)
+    }
+    if (closest === -1) {
+      closest = closestStartDateIndex
+    }
+    closest = await checkIfStartBetween(closest)
+    var users = usersMeetingList;
+
+    for (var j=0; j < users.length; j++) {
+      for (var i=0; i < usersList.length; i++) {
+        if (users[j].user === usersList[i].email) {
+          let date = await checkConditions(closest)
+          let stock = await checkIfConflictWithNextMeeting(date, closest)
+          if (stock === closest) {
+            return (date)
+          } else {
+            closest = stock
+          }
+        }
       }
     }
     console.log("ERROR DIDN'T A MEETING SLOT")
   }
 
+  const transformDateToString = (date) => {
+    var dateStr = '';
+    dateStr = dateStr.concat('Le ', date.date);
+    dateStr = dateStr.concat('-', date.month);
+    dateStr = dateStr.concat('-', date.year);
+    dateStr = dateStr.concat(' à ', date.hours);
+    dateStr = dateStr.concat('h', `${date.minute<10?`0${date.minute}`:`${date.minute}`}`);
+    return (dateStr)
+  }
+
   const meetingHandler = async () => {
     let isGood = true;
+    let date = null;
     // 1 - Check si les users existent
     isGood = await verifyMeetingUsers()
     // 2 - Check si le nom du meeting existe déjà ou pas dans la db
@@ -319,11 +393,14 @@ function App() {
     }
     // 3 - Récupérer les users avec leur indisponibilitées
     // 3 - Faire l'algo de calcul entre toutes les dates
-    findMeetingDate()
+    date = await findMeetingDate()
+    meetingdate = transformDateToString(date)
+    setMeetingDate(meetingdate)
+    addNewUsersIndisponibility(date)
     // 5 - Verifier que ca correspond aux heures de travail
     // ?
     //last push dans la db
-    addMeeting()
+    await addMeeting()
   }
 
   return (
@@ -366,7 +443,7 @@ function App() {
       <div>
         <button className="button" onClick={getUsers}>Show Users</button>
         {usersList.map((val, key) => {
-          return <div key={key}>{val.email}</div>
+          return <div key={key}>{val.email + " " + val.startdate + " " + val.enddate}</div>
         })}
       </div>
       <hr/>
@@ -425,7 +502,7 @@ function App() {
         <div>
           <button className="button" onClick={getMeetings}>Show Meetings</button>
           {meetingsList.map((val, key) => {
-            return <div key={key}>{val.users.replaceAll(';', ' ') + " " + val.meetingname}</div>
+            return <div key={key}>{val.users.replaceAll(';', ' ') + " " + val.date + " " + val.meetingname}</div>
           })}
         </div>
       </div>
@@ -446,3 +523,5 @@ export default App;
 // TODO quand je concat les string -> remove les string vide pck je les laisse passer
 
 // TODO Penser a remove la db quand push
+
+// TODO prblm avec la création de nouv compte quand crée meeting( crée meme si meeting invalid)
