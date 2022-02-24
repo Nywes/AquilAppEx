@@ -58,7 +58,7 @@ const createMeeting = (req, res) => {
 }
 
 const getUsers = (req, res) => {
-    db.all("SELECT email FROM users", (err, result) => {
+    db.all("SELECT * FROM users", (err, result) => {
         if (err) {
             console.log(err);
             throw err;
@@ -83,11 +83,6 @@ const getMeetings = (req, res) => {
             console.log(err);
             throw err;
         } else {
-            if (!result || result.length === 0) {
-                return res
-                    .status(404)
-                    .json({ success: false, error: `BaseUser not found` })
-            }
             return res.status(200).json({ success: true, data: result })
         }
     })

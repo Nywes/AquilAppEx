@@ -3,6 +3,7 @@ import './App.css';
 //import api from './api';
 import { useState } from 'react';
 import axios from 'axios';
+import { DATETIME } from 'mysql/lib/protocol/constants/types';
 
 function App() {
   const [email, setEmail] = useState("");
@@ -14,14 +15,12 @@ function App() {
   const [meetingname, setMeetingName] = useState("");
 
   let [usersList, setUsersList] = useState([]);
-  const [meetingsList, setMeetingsList] = useState([]);
+  let [meetingsList, setMeetingsList] = useState([]);
 
   let [correctEmail, setCorrectEmail] = useState(false);
   let [correctUserDates, setCorrectUserDates] = useState(false);
 
   const [error_message, setErrorMessage] = useState("");
-
-  let isGood = true;
 
   const addUser = () => {
     verifiyUsersParameters()
@@ -34,6 +33,16 @@ function App() {
         console.log("sucess");
       });
     }
+  }
+
+  const addSpecialUser = () => {
+    axios.post('http://localhost:3001/create_user', {
+        email: email,
+        startdate: startdate,
+        enddate: enddate,
+      }).then(() => {
+        console.log("sucess");
+    });
   }
 
   const JoinUserMeetingList = () => {
@@ -51,9 +60,9 @@ function App() {
     return (list);
   }
 
-  const addMeeting = () => {
+  const addMeeting = async () => {
     // TODO if empty cancel le move
-    axios.post('http://localhost:3001/create_meeting', {
+    await axios.post('http://localhost:3001/create_meeting', {
       users: JoinUserMeetingList(),
       date: meetingdate,
       meetingname: meetingname,
@@ -127,9 +136,10 @@ function App() {
       }
       if (findUser === false) {
         console.log(`This user : ${users[i].user}, doesn't exist`);
-        isGood = false;
+        return false;
       }
     }
+    return true;
   }
 
   const verifyMeetingName = async () => {
@@ -139,25 +149,181 @@ function App() {
       meetingsList = response.data.data;
     })
     for (var i=0; i < meetingsList.length; i++) {
-      if (name === users[i].name) {
-        isGood = false;
-        return
+      if (name === meetingsList[i].meetingname) {
+        console.log("isEqual");
+        return false;
       }
+    }
+    return true;
+  }
+
+  const giveActalDatetime = () => {
+    var today = new Date();
+    var year = today.getFullYear()
+    var month = (today.getMonth() + 1);
+    var date = today.getDate();
+    var hours = today.getHours();
+    var minutes = today.getMinutes();
+    return (`${year}-${month<10?`0${month}`:`${month}`}-${date}T${hours<10?`0${hours}`:`${hours}`}:${minutes<10?`0${minutes}`:`${minutes}`}`);
+  }
+
+  const findClosestStart = (closestDate) => {
+    var earliestDate = closestDate;
+    var incr = -1;
+    for (var i=0; i < usersList.length; i++) {
+      if (usersList[i].startdate < earliestDate && earliestDate === closestDate) {
+        continue;
+      }
+      if (usersList[i].startdate > closestDate && (usersList[i].startdate < earliestDate || earliestDate === closestDate)) {
+        earliestDate = usersList[i].startdate;
+        incr = i;
+      }
+    }
+    //rajouter une valeur de retour si il trouve rien
+    return (incr);
+  }
+
+  const checkIfStartBetween = (closest) => {
+    let start = usersList[closest].startdate;
+    let end = usersList[closest].enddate;
+    var dateBetween = null;
+    var incr = closest;
+
+    for (var i=0; i < usersList.length; i++) {
+      if (usersList[i].startdate > start && usersList[i].startdate < end && (dateBetween < usersList[i].startdate || dateBetween === null) && usersList[i].enddate > end) {
+        incr = i
+        dateBetween = usersList[i].startdate;
+      }
+    }
+    return (incr);
+  }
+
+  const checkConditions = (closest) => {
+    let opening = usersList[closest].enddate
+    var opDate = new Date(opening);
+    let opTab = {
+      year: opDate.getFullYear(),
+      month: (opDate.getMonth() + 1),
+      date: opDate.getDate(),
+      hours: opDate.getHours(),
+      minute: opDate.getMinutes(),
+    }
+    //désolé 29 février mais j'ai la flemme de te gérer
+    const months = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    if ((9 <= opTab.hours && opTab.hours <= 10) || (opTab.hours === 11 && opTab.minute === 0)) {
+      return (opTab)
+    } else if ((13 <= opTab.hours && opTab.hours <= 15) || (opTab.hours === 16 && opTab.minute === 0)){
+      return (opTab)
+    } else if (0 <= opTab.hours && opTab.hours <= 8) {
+      opTab.hours = 9;
+      opTab.minute = 0;
+      return (opTab);
+    } else {
+      opTab.hours = 9;
+      opTab.minute = 0;
+      opTab.date += 1;
+      if (opTab.date > months[opTab.month]) {
+        opTab.date = 1;
+        opTab.month += 1;
+        if (opTab.month > 12) {
+          opTab.month = 1;
+          opTab.year += 1;
+        }
+      }
+      return (opTab);
     }
   }
 
-  const meetingHandler = () => {
+  const checkIfConflictWithNextMeeting = (date, closest) => {
+    let nextMeeting = findClosestStart(usersList[closest].enddate)
+    //c'est degeu
+    if (nextMeeting === -1)
+      return (closest)
+    var nextDate = new Date(usersList[nextMeeting].enddate);
+    let nextMeetingTab = {
+      year: nextDate.getFullYear(),
+      month: (nextDate.getMonth() + 1),
+      date: nextDate.getDate(),
+      hours: nextDate.getHours(),
+      minute: nextDate.getMinutes(),
+    }
+
+    console.log(date)
+    console.log(nextMeetingTab)
+    if (date.year === nextMeetingTab.year && date.month === nextMeetingTab.month && date.date == nextMeetingTab.date) {
+      if ((nextMeetingTab.hours - date.hours === 1) && (nextMeetingTab.minute < date.minute)) {
+        return (nextMeeting);
+      }
+    }
+    return (closest)
+  }
+
+  const addNewUsersIndisponibility = (date) => {
+    let startDateVar = (`${date.year}-${date.month<10?`0${date.month}`:`${date.month}`}-${date.date}T${date.hours<10?`0${date.hours}`:`${date.hours}`}:${date.minute<10?`0${date.minute}`:`${date.minute}`}`)
+    let endDateVar = (`${date.year}-${date.month<10?`0${date.month}`:`${date.month}`}-${date.date}T${(date.hours + 1)<10?`0${(date.hours + 1)}`:`${(date.hours + 1)}`}:${date.minute<10?`0${date.minute}`:`${date.minute}`}`)
+    console.log(startDateVar)
+    console.log(endDateVar)
+    for (var i=0; i < usersMeetingList.length; i++) {
+      setEmail(usersMeetingList[i])
+      setStartDate(startDateVar)
+      setEndDate(endDateVar)
+      addSpecialUser()
+    }
+  }
+
+  const findMeetingDate = async () => {
+    //chiant qu'un mec peut avoir plusieurs indispo ?? pas vraiment jpense
+    //penser a quand je rajoute un meeting j'ajoute une indispo pour tout les mecs concernés dans la table user
+    //var -> usersList
+    // TODO Problem : je prend usersList la alors que je dois utiliser la userList fournie (mettre au bon format)
+    await axios.get('http://localhost:3001/get_users').then((response) => {
+      setUsersList(response.data.data);
+      usersList = response.data.data;
+    })
+    let closest = findClosestStart(giveActalDatetime())
+    console.log(usersList)
+    console.log(usersList[closest])
+    closest = checkIfStartBetween(closest)
+    console.log(usersList)
+    console.log(usersList[closest])
+    console.log("-------")
+    for (var i=0; i < usersList.length; i++) {
+      let date = checkConditions(closest)
+      let stock = checkIfConflictWithNextMeeting(date, closest)
+      if (stock === closest) {
+        console.log("result")
+        console.log(date)
+        addNewUsersIndisponibility(date)
+        return (date)
+      } else {
+        closest = stock
+      }
+    }
+    console.log("ERROR DIDN'T A MEETING SLOT")
+  }
+
+  const meetingHandler = async () => {
+    let isGood = true;
     // 1 - Check si les users existent
-    verifyMeetingUsers()
+    isGood = await verifyMeetingUsers()
     // 2 - Check si le nom du meeting existe déjà ou pas dans la db
-    verifyMeetingName()
+    if (!isGood) {
+      // this user doesn't exist
+      return;
+    }
+    isGood = await verifyMeetingName()
+    if (!isGood) {
+      console.log("The name of this meeting already exist");
+      return;
+    }
     // 3 - Récupérer les users avec leur indisponibilitées
     // 3 - Faire l'algo de calcul entre toutes les dates
-    // ?
+    findMeetingDate()
     // 5 - Verifier que ca correspond aux heures de travail
     // ?
     //last push dans la db
-    //addMeeting()
+    addMeeting()
   }
 
   return (
@@ -196,13 +362,13 @@ function App() {
         <button className="button" onClick={addUser}>Add User</button>
       </div>
       <hr/>
-      {/* SHOW USERS
+      {/* SHOW USERS */}
       <div>
         <button className="button" onClick={getUsers}>Show Users</button>
         {usersList.map((val, key) => {
-          return <div>{val.email}</div>
+          return <div key={key}>{val.email}</div>
         })}
-      </div>*/}
+      </div>
       <hr/>
       {/* ADD A MEETING */}
       <div>
@@ -253,12 +419,13 @@ function App() {
         </div>
         {/* Add Meeting Button */}
         <button className="button" onClick={meetingHandler}>Add Meeting</button>
+        <button className="button" onClick={findMeetingDate}>TEST</button>
         <hr/>
         {/* SHOW MEETINGS*/}
         <div>
           <button className="button" onClick={getMeetings}>Show Meetings</button>
           {meetingsList.map((val, key) => {
-            return <div>{val.users.replaceAll(';', ' ')}</div>
+            return <div key={key}>{val.users.replaceAll(';', ' ') + " " + val.meetingname}</div>
           })}
         </div>
       </div>
@@ -273,15 +440,9 @@ export default App;
 // donc juste check si 1 des 2 est null
 // ok si les deux sont null ou les deux fill
 // si 1 mais pas l'autre error
+// TODO IDEE DE FOU J'ENVOIE DEUX FOIS UN NEW DATE() POUR CEUX QUI REMPLISSENT RIEN
+// penser a mettre une erreur quand meme quand le man en met qu'un des 2
 
-//quand je concat les string -> remove les string vide pck je les laisse passer
+// TODO quand je concat les string -> remove les string vide pck je les laisse passer
 
-
-// 1 - Check si les users existent
-// 2 - Check si le nom existe déjà ou pas dans la db
-// 3 - Récupérer les users avec leur indisponibilitées
-// 4 - faire l'algo de calcul entre toutes les dates
-// 5 - Verifier que ca correspond aux heures de travail
-// 6 - 
-
-// LAST - Push les valeurs dans la db
+// TODO Penser a remove la db quand push
