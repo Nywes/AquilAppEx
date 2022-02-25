@@ -317,7 +317,6 @@ class AddMeeting extends Component {
           date: this.state.meetingdate,
           meetingname: this.state.meetingname,
         })
-        //window.location.reload(false);
     }
 
     meetingHandler = async () => {
